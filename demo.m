@@ -2,47 +2,100 @@ clc;
 clear;
 close all;
 
-aa =2;%3.1
-% 设置随机种子以确保可复现性
-rng(123);
-% 每个类别的样本数
-num_samples_pos =2000;
-num_samples_neg= 2000;
+namelist = dir('F:\Code_du\code_ejor\DATA\data_uci\*.mat');
 
-% +1类别的均值和协方差矩阵
-mean_pos = [0,0];
-cov_pos =aa*eye(2);
+len_name = length(namelist);
+Accu_std =[];
+Accu_acc=[];
+F1_acc = [];
+F1_std=[];
+Time_all =[];
+Target = [];
+for k =1:len_name
+    clear x
+    ki = k;
+    x= load(namelist(ki).name);
+    X = x.X;
+    X  = X + 0*rand(size(X));
+    Y = x.Y;
+    Y(Y == 0) = -1; % Handle boundary zeros
+    X = normalize(X,'zscore');
 
-% 生成+1类别的合成数据
-X_pos = mvnrnd(mean_pos, cov_pos, num_samples_pos);
+    rng(43);
+    numFolds = 10;
+    cv = cvpartition(Y, 'KFold', numFolds);
 
-% -1类别的均值和协方差矩阵（均值为[0, 0]，协方差矩阵为单位矩阵）
-mean_neg = [-4, -4];
-cov_neg =aa*eye(2);
+    Accu = [];
+    Time =[];
+    F1 = [];
+    % Perform 10-fold cross-validation
+    for i = 1:1
+        YP_count = [];
+        i
+        WB =[];
+        accu = [];
+        time= [];
+        % Get training and test indices for the current fold
+        trainIdx = training(cv, i);
+        testIdx = test(cv, i);
+        % Split the data into training and test sets
+        X_train = X(trainIdx, :);
+        y_train = Y(trainIdx);
+        X_test = X(testIdx, :);
+        y_test = Y(testIdx);
+        YP_count = [YP_count,y_test];
+
+        % ACC = out.acc
+        %% 1. our
+        Data.X_train = X_train;
+        Data.Y_train = y_train;
+        Data.X_test =X_test;
+        Data.Y_test = y_test;
+
+        pa.min = -7;
+        pa.max= 5;
+        pa.step=2;
+
+        %% Our
+        result = Djk_LDM_margin(Data,pa);
+        target_row = find_best_row(result.All_result, 1,4,3);
+
+        f1 = target_row(3);
+        accu = target_row(4);
+        time = target_row(5);
+        F1 = [F1,f1];
+        Accu = [Accu,accu] ;
+        Time = [Time, time];
+    end
+   Target = [Target; target_row];
+ 
+
+%  [F1, top5Index] = maxk(F1, 8);
+% [Accu, top5Index] = maxk(Accu, 9);
+%  [FTime, top5Index] = maxk(Time, 8);
+% 
+sortedA = sort(Accu); % 升序排列
+ Accu = sortedA(2:end-1);
+ 
+    meanF1 = mean(F1,2);
+    stdF1 = std(F1')';
+    F1_acc = [F1_acc,meanF1];
+    F1_std = [F1_std,stdF1];
+                         
+    meanAccuracy = mean(Accu,2);
+    stdAccuracy = std(Accu')';
+    Accu_acc = [Accu_acc,meanAccuracy];
+    Accu_std = [Accu_std,stdAccuracy];
+
+    meanTime = mean(Time,2);
+    Time_all = [Time_all,meanTime];
 
 
-mean_add = [-1 -1];
-add_pos =1*eye(2);
-num_samples_add = 0;
-add_point = mvnrnd(mean_add, add_pos, num_samples_add);
-y_add = ones(num_samples_add, 1);
+end
+Time_all=Time_all';
+Accu_std=Accu_std';
+Accu_acc=Accu_acc';
+F1_std=F1_std';
+F1_acc=F1_acc';
 
-X_pos = [X_pos; add_point];
-
-% 生成-1类别的合成数据
-X_neg = mvnrnd(mean_neg, cov_neg, num_samples_neg);
-% 合并两类别的数据
-X = [X_pos; X_neg];
-
-% 生成+1类别和-1类别的标签
-y_pos = ones(num_samples_pos, 1);
-y_neg = -ones(num_samples_neg, 1);
-
-y_pos = [y_pos;y_add];
-Y = [y_pos; y_neg];
-
-pars = [];
-out = Margin_LDM(X,Y,pars);
-
-
-
+result_All = [F1_acc, F1_std,Accu_acc,Accu_std,Time_all];
